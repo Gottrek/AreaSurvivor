@@ -1,128 +1,107 @@
 #include <SFML/Graphics.hpp>
-#include <iostream>
-
-#pragma region imgui
 #include "imgui.h"
 #include "imgui-SFML.h"
 #include "imguiThemes.h"
-#pragma endregion
 
-
-//if you want to load OpenGL
-//#include <glad/glad.h>
-//#include <errorReporting.h>
+// Sta³e konfiguracyjne
+const float WINDOW_WIDTH = 1000.f;
+const float WINDOW_HEIGHT = 500.f;
+const float PLAYER_RADIUS = 50.f;
+const float PLAYER_SPEED = 400.f;
 
 int main()
 {
-	sf::RenderWindow window(sf::VideoMode(500, 500), "SFML works!");
+    // --- 1. Inicjalizacja Okna ---
+    sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Arena Survivor");
+    window.setFramerateLimit(144);
 
+    // --- 2. Inicjalizacja ImGui ---
+    ImGui::SFML::Init(window);
+    imguiThemes::embraceTheDarkness();
 
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.FontGlobalScale = 2.f; // Zmniejszy³em skalê czcionki, bo 3.0 to bardzo du¿o
 
+    // Stylizacja ImGui
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.Colors[ImGuiCol_WindowBg].w = 0.9f; // Trochê bardziej nieprzezroczyste t³o
 
-	//if you want to load OpenGL.
-	// Note: SFML also uses OpenGL so it will interfere with your code.
-	// If you want to draw both with SFML and your OpenGL code, you will have
-	// to fight with it a little.
-	// I found that calling glDisableVertexAttribArray(0); for attributes 0 - 8
-	// solved some issues sometimes
-	//  
-	//if (!gladLoadGLLoader((GLADloadproc)sf::Context::getFunction))
-	//{
-	//	std::cerr << "Failed to initialize GLAD" << std::endl;
-	//	return -1;
-	//}
-	//enableReportGlErrors();
+    // --- 3. Inicjalizacja Gracza ---
+    sf::CircleShape player(PLAYER_RADIUS);
+    player.setFillColor(sf::Color::Green);
+    player.setOrigin(PLAYER_RADIUS, PLAYER_RADIUS); // Punkt zaczepienia w œrodku ko³a
+    player.setPosition(WINDOW_WIDTH / 2.f, WINDOW_HEIGHT / 2.f);
 
+    sf::Clock clock;
 
-#pragma region imgui
-	ImGui::SFML::Init(window);
-	//you can use whatever imgui theme you like!
-	//ImGui::StyleColorsDark();				
-	//imguiThemes::yellow();
-	//imguiThemes::gray();
-	imguiThemes::green();
-	imguiThemes::red();
-	//imguiThemes::gray();
-	//imguiThemes::embraceTheDarkness();
+    // --- 4. Pêtla G³ówna Gry ---
+    while (window.isOpen())
+    {
+        // A. Obs³uga Zdarzeñ
+        sf::Event event;
+        while (window.pollEvent(event))
+        {
+            ImGui::SFML::ProcessEvent(window, event);
 
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
-	io.FontGlobalScale = 2.f;
-	ImGuiStyle& style = ImGui::GetStyle();
-	style.Colors[ImGuiCol_WindowBg].w = 0.5f;
-	//style.Colors[ImGuiCol_DockingEmptyBg].w = 0.f;
-#pragma endregion
+            if (event.type == sf::Event::Closed)
+                window.close();
+            else if (event.type == sf::Event::Resized)
+            {
+                sf::FloatRect visibleArea(0, 0, event.size.width, event.size.height);
+                window.setView(sf::View(visibleArea));
+            }
+        }
 
+        // B. Obliczanie DeltaTime (czasu klatki)
+        sf::Time deltaTime = clock.restart();
+        float dt = deltaTime.asSeconds();
+        // Zabezpieczenie przed "skokiem" czasu przy zawieszeniu okna
+        if (dt > 0.1f) dt = 0.1f;
 
+        // C. Aktualizacja ImGui
+        ImGui::SFML::Update(window, deltaTime);
 
-	sf::CircleShape shape(100.f);
-	//window.setVerticalSyncEnabled(true);
-	shape.setFillColor(sf::Color::Green);
+        // Konfiguracja DockSpace (t³o dla okienek ImGui)
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, sf::Color(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_DockingEmptyBg, sf::Color(0, 0, 0, 0));
+        ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
+        ImGui::PopStyleColor(2);
 
-	sf::Clock clock;
+        // Przyk³adowe okno ImGui
+        ImGui::Begin("Debug Panel");
+        ImGui::Text("FPS: %.1f", 1.0f / dt);
+        ImGui::Text("Position: (%.1f, %.1f)", player.getPosition().x, player.getPosition().y);
+        ImGui::End();
 
+        // D. Logika Gry (Ruch Gracza)
+        sf::Vector2f movement(0.f, 0.f);
 
-	while (window.isOpen())
-	{
-		sf::Event event;
-		while (window.pollEvent(event))
-		{
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::W)) movement.y -= 1.f;
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::S)) movement.y += 1.f;
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::A)) movement.x -= 1.f;
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::D)) movement.x += 1.f;
 
-#pragma region imgui
-			ImGui::SFML::ProcessEvent(window, event);
-#pragma endregion
+        // Normalizacja wektora (¿eby ruch po skosie nie by³ szybszy)
+        if (movement.x != 0.f || movement.y != 0.f)
+        {
+            // Prosta normalizacja
+            float length = std::sqrt(movement.x * movement.x + movement.y * movement.y);
+            movement /= length;
 
+            player.move(movement * PLAYER_SPEED * dt);
+        }
 
-			if (event.type == sf::Event::Closed)
-				window.close();
-			else if (event.type == sf::Event::Resized)
-			{
-				// Adjust the viewport when the window is resized
-				sf::FloatRect visibleArea(0, 0, event.size.width, event.size.height);
-				window.setView(sf::View(visibleArea));
-			}
-		}
+        // E. Renderowanie
+        window.clear(sf::Color(20, 20, 20)); // Ciemnoszare t³o zamiast czarnego
+        window.draw(player);
+        ImGui::SFML::Render(window);
+        window.display();
+    }
 
-		//calculate the delta time
-		sf::Time deltaTime = clock.restart();
-		float deltaTimeSeconds = deltaTime.asSeconds();
+    // --- 5. Czyszczenie ---
+    ImGui::SFML::Shutdown();
 
-		//make sure delta time stays within normal bounds, like between one FPS and zero FPS
-		deltaTimeSeconds = std::min(deltaTimeSeconds, 1.f);
-		deltaTimeSeconds = std::max(deltaTimeSeconds, 0.f);
-
-#pragma region imgui
-		ImGui::SFML::Update(window, deltaTime);
-
-		ImGui::PushStyleColor(ImGuiCol_WindowBg, {});
-		ImGui::PushStyleColor(ImGuiCol_DockingEmptyBg, {});
-		ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
-		ImGui::PopStyleColor(2);
-#pragma endregion
-
-
-		ImGui::Begin("Hello, world!");
-		ImGui::Button("Look at this pretty button!");
-		ImGui::Text("Hello!");
-		ImGui::End();
-
-		//game code....
-		window.clear();
-		window.draw(shape);
-
-
-#pragma region imgui
-		ImGui::SFML::Render(window);
-#pragma endregion
-
-		window.display();
-	}
-
-#pragma region imgui
-	ImGui::SFML::Shutdown();
-#pragma endregion
-
-	return 0;
+    return 0;
 }
